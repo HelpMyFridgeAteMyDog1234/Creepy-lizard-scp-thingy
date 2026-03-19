@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Reptile Cursor</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: black;
+            cursor: none; /* Hides the real computer cursor */
+        }
+    </style>
+</head>
+<body>
+
+    <script>
+        // --- INPUT & SETUP ---
+        var Input = {
+            keys: [],
+            mouse: {
+                left: false, right: false, middle: false,
+                x: window.innerWidth / 2, y: window.innerHeight / 2
+            }
+        };
+
+        var fakeCursor = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+        // --- VOCAL SYSTEM (Web Audio API) ---
+        var audioCtx;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playClick(type = "normal") {
+            if (!audioCtx) return; 
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            if (type === "grab") {
+                // Sharp, excited snap
+                osc.type = "square";
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === "frustrated") {
+                // Low, guttural, rapid clicking
+                osc.type = "sawtooth";
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.05);
+                gainNode.gain.setValueAtTime(0.15, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else {
+                // Standard reptilian throat click
+                osc.type = "triangle";
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.05);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+        }
+
+        for (var i = 0; i < 230; i++) Input.keys.push(false);
+        document.addEventListener("keydown", event => {
+            initAudio();
+            Input.keys[event.keyCode] = true;
+        });
+        document.addEventListener("keyup", event => Input.keys[event.keyCode] = false);
+        document.addEventListener("mousedown", event => {
+            initAudio(); // Wake up audio context on first click
+            if (event.button === 0) Input.mouse.left = true;
+            if (event.button === 1) Input.mouse.middle = true;
+            if (event.button === 2) Input.mouse.right = true;
+        });
+        document.addEventListener("mouseup", event => {
+            if (event.button === 0) Input.mouse.left = false;
+            if (event.button === 1) Input.mouse.middle = false;
+            if (event.button === 2) Input.mouse.right = false;
+        });
+        document.addEventListener("mousemove", event => {
+            Input.mouse.x = event.clientX;
+            Input.mouse.y = event.clientY;
+        });
+
+        var canvas = document.createElement("canvas");
+        document.body.appendChild(canvas);
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        canvas.style.position = "absolute";
+        canvas.style.left = "0px";
+        canvas.style.top = "0px";
+        document.body.style.overflow = "hidden";
+        var ctx = canvas.getContext("2d");
+        
+        // --- NEURAL NETWORK IMPLEMENTATION ---
+        class NeuralNetwork {
+            constructor(inputs, hidden, outputs) {
+                this.ni = inputs;
+                this.nh = hidden;
+                this.no = outputs;
+                this.wih = Array.from({length: this.nh}, () => Array.from({length: this.ni}, () => Math.random() * 2 - 1));
+                this.who = Array.from({length: this.no}, () => Array.from({length: this.nh}, () => Math.random() * 2 - 1));
+            }
+
+            sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+            dsigmoid(y) { return y * (1 - y); }
+
+            predict(inputs) {
+                let hidden = [];
+                for (let i = 0; i < this.nh; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < this.ni; j++) sum += inputs[j] * this.wih[i][j];
+                    hidden.push(this.sigmoid(sum));
+                }
+                let outputs = [];
+                for (let i = 0; i < this.no; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < this.nh; j++) sum += hidden[j] * this.who[i][j];
+                    outputs.push(this.sigmoid(sum));
+                }
+                return outputs;
+            }
+
+            train(inputs, targets, lr) {
+                let hidden = [];
+                for (let i = 0; i < this.nh; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < this.ni; j++) sum += inputs[j] * this.wih[i][j];
+                    hidden.push(this.sigmoid(sum));
+                }
+                let outputs = [];
+                for (let i = 0; i < this.no; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < this.nh; j++) sum += hidden[j] * this.who[i][j];
+                    outputs.push(this.sigmoid(sum));
+                }
+
+                let output_errors = [];
+                for (let i = 0; i < this.no; i++) output_errors.push(targets[i] - outputs[i]);
+
+                let hidden_errors = [];
+                for (let i = 0; i < this.nh; i++) {
+                    let err = 0;
+                    for (let j = 0; j < this.no; j++) err += output_errors[j] * this.who[j][i];
+                    hidden_errors.push(err);
+                }
+
+                for (let i = 0; i < this.no; i++) {
+                    let gradient = output_errors[i] * this.dsigmoid(outputs[i]) * lr;
+                    for (let j = 0; j < this.nh; j++) this.who[i][j] += gradient * hidden[j];
+                }
+
+                for (let i = 0; i < this.nh; i++) {
+                    let gradient = hidden_errors[i] * this.dsigmoid(hidden[i]) * lr;
+                    for (let j = 0; j < this.ni; j++) this.wih[i][j] += gradient * inputs[j];
+                }
+            }
+
+            drawBrain(ctx, startX, startY, rewardDisplay) {
+                let layers = [this.ni, this.nh, this.no];
+                let weights = [this.wih, this.who];
+                let nodeSpacing = 25;
+                let layerSpacing = 70;
+                let maxNodes = Math.max(...layers);
+                let yOffsets = layers.map(n => ((maxNodes - n) * nodeSpacing) / 2);
+
+                for (let l = 0; l < 2; l++) {
+                    for (let i = 0; i < layers[l+1]; i++) {
+                        for (let j = 0; j < layers[l]; j++) {
+                            let w = weights[l][i][j];
+                            ctx.beginPath();
+                            ctx.moveTo(startX + l * layerSpacing, startY + yOffsets[l] + j * nodeSpacing);
+                            ctx.lineTo(startX + (l+1) * layerSpacing, startY + yOffsets[l+1] + i * nodeSpacing);
+                            ctx.lineWidth = Math.max(0.2, Math.min(2.5, Math.abs(w)));
+                            ctx.strokeStyle = w > 0 ? `rgba(100, 255, 100, ${Math.min(1, Math.abs(w))})` : `rgba(255, 100, 100, ${Math.min(1, Math.abs(w))})`;
+                            ctx.stroke();
+                        }
+                    }
+                }
+
+                for (let l = 0; l < 3; l++) {
+                    for (let i = 0; i < layers[l]; i++) {
+                        ctx.beginPath();
+                        ctx.arc(startX + l * layerSpacing, startY + yOffsets[l] + i * nodeSpacing, 5, 0, Math.PI * 2);
+                        ctx.fillStyle = "white";
+                        ctx.fill();
+                        ctx.strokeStyle = "black";
+                        ctx.stroke();
+                    }
+                }
+                
+                ctx.fillStyle = "white";
+                ctx.font = "14px monospace";
+                ctx.fillText("Reinforcement Learning NN", startX - 10, startY - 20);
+                
+                ctx.font = "bold 14px monospace";
+                if (rewardDisplay > 0) {
+                    ctx.fillStyle = "#44ff44";
+                    ctx.fillText(`[REWARDED] Dopamine: +${rewardDisplay.toFixed(2)}`, startX - 10, startY - 40);
+                } else {
+                    ctx.fillStyle = "#ff4444";
+                    ctx.fillText(`[PUNISHED] Pain: ${rewardDisplay.toFixed(2)}`, startX - 10, startY - 40);
+                }
+
+                ctx.fillStyle = "#aaa";
+                ctx.font = "10px monospace";
+                ctx.fillText("In: [AngleDif, Distance]", startX - 10, startY + maxNodes * nodeSpacing + 10);
+                ctx.fillText("Out: [Turn, Accel]", startX - 10, startY + maxNodes * nodeSpacing + 25);
+            }
+        }
+
+        // --- PHYSICS SYSTEM ---
+        var segmentCount = 0;
+        
+        class Segment {
+            constructor(parent, size, angle, range, stiffness) {
+                segmentCount++;
+                this.isSegment = true;
+                this.parent = parent;
+                if (typeof parent.children == "object") parent.children.push(this);
+                this.children = [];
+                this.size = size;
+                this.relAngle = angle;
+                this.defAngle = angle;
+                this.absAngle = parent.absAngle + angle;
+                this.range = range;
+                this.stiffness = stiffness;
+                this.updateRelative(false, true);
+            }
+            
+            updateRelative(iter, flex) {
+                this.relAngle = this.relAngle - 2 * Math.PI * Math.floor((this.relAngle - this.defAngle) / 2 / Math.PI + 1 / 2);
+                if (flex) {
+                    this.relAngle = Math.min(this.defAngle + this.range / 2, Math.max(this.defAngle - this.range / 2, (this.relAngle - this.defAngle) / this.stiffness + this.defAngle));
+                }
+                this.absAngle = this.parent.absAngle + this.relAngle;
+                this.x = this.parent.x + Math.cos(this.absAngle) * this.size;
+                this.y = this.parent.y + Math.sin(this.absAngle) * this.size;
+                if (iter) for (var i = 0; i < this.children.length; i++) this.children[i].updateRelative(iter, flex);
+            }
+            
+            draw(iter) {
+                ctx.beginPath();
+                ctx.moveTo(this.parent.x, this.parent.y);
+                ctx.lineTo(this.x, this.y);
+                ctx.stroke();
+                if (iter) for (var i = 0; i < this.children.length; i++) this.children[i].draw(true);
+            }
+            
+            follow(iter) {
+                var x = this.parent.x;
+                var y = this.parent.y;
+                var dist = Math.max(0.001, ((this.x - x) ** 2 + (this.y - y) ** 2) ** 0.5);
+                this.x = x + this.size * (this.x - x) / dist;
+                this.y = y + this.size * (this.y - y) / dist;
+                this.absAngle = Math.atan2(this.y - y, this.x - x);
+                this.relAngle = this.absAngle - this.parent.absAngle;
+                this.updateRelative(false, true);
+                if (iter) for (var i = 0; i < this.children.length; i++) this.children[i].follow(true);
+            }
+        }
+        
+        class LimbSystem {
+            constructor(end, length, speed, creature) {
+                this.end = end;
+                this.length = Math.max(1, length);
+                this.creature = creature;
+                this.speed = speed;
+                creature.systems.push(this);
+                this.nodes = [];
+                var node = end;
+                for (var i = 0; i < length; i++) {
+                    this.nodes.unshift(node);
+                    node = node.parent;
+                    if (!node.isSegment) {
+                        this.length = i + 1;
+                        break;
+                    }
+                }
+                this.hip = this.nodes[0].parent;
+            }
+            
+            moveTo(x, y) {
+                this.nodes[0].updateRelative(true, true);
+                var dist = Math.max(0.001, ((x - this.end.x) ** 2 + (y - this.end.y) ** 2) ** 0.5);
+                var len = Math.max(0, dist - this.speed);
+                for (var i = this.nodes.length - 1; i >= 0; i--) {
+                    var node = this.nodes[i];
+                    var ang = Math.atan2(node.y - y, node.x - x);
+                    node.x = x + len * Math.cos(ang);
+                    node.y = y + len * Math.sin(ang
