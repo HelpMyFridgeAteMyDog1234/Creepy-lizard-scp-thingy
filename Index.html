@@ -317,4 +317,293 @@
                     var node = this.nodes[i];
                     var ang = Math.atan2(node.y - y, node.x - x);
                     node.x = x + len * Math.cos(ang);
-                    node.y = y + len * Math.sin(ang
+                    node.y = y + len * Math.sin(ang);
+                    x = node.x;
+                    y = node.y;
+                    len = node.size;
+                }
+                for (var i = 0; i < this.nodes.length; i++) {
+                    var node = this.nodes[i];
+                    node.absAngle = Math.atan2(node.y - node.parent.y, node.x - node.parent.x);
+                    node.relAngle = node.absAngle - node.parent.absAngle;
+                    for (var ii = 0; ii < node.children.length; ii++) {
+                        var childNode = node.children[ii];
+                        if (!this.nodes.includes(childNode)) childNode.updateRelative(true, false);
+                    }
+                }
+            }
+            
+            update() { this.moveTo(Input.mouse.x, Input.mouse.y); }
+        }
+        
+        class LegSystem extends LimbSystem {
+            constructor(end, length, speed, creature) {
+                super(end, length, speed, creature);
+                this.goalX = end.x;
+                this.goalY = end.y;
+                this.step = 0;
+                this.forwardness = 0;
+                this.reach = 0.9 * ((this.end.x - this.hip.x) ** 2 + (this.end.y - this.hip.y) ** 2) ** 0.5;
+                var relAngle = this.creature.absAngle - Math.atan2(this.end.y - this.hip.y, this.end.x - this.hip.x);
+                relAngle -= 2 * Math.PI * Math.floor(relAngle / 2 / Math.PI + 1 / 2);
+                this.swing = -relAngle + (2 * (relAngle < 0) - 1) * Math.PI / 2;
+                this.swingOffset = this.creature.absAngle - this.hip.absAngle;
+            }
+            
+            update(x, y) {
+                this.moveTo(this.goalX, this.goalY);
+                if (this.step == 0) {
+                    var dist = ((this.end.x - this.goalX) ** 2 + (this.end.y - this.goalY) ** 2) ** 0.5;
+                    if (dist > 1) {
+                        this.step = 1;
+                        this.goalX = this.hip.x + this.reach * Math.cos(this.swing + this.hip.absAngle + this.swingOffset) + (2 * Math.random() - 1) * this.reach / 2;
+                        this.goalY = this.hip.y + this.reach * Math.sin(this.swing + this.hip.absAngle + this.swingOffset) + (2 * Math.random() - 1) * this.reach / 2;
+                    }
+                } else if (this.step == 1) {
+                    var theta = Math.atan2(this.end.y - this.hip.y, this.end.x - this.hip.x) - this.hip.absAngle;
+                    var dist = ((this.end.x - this.hip.x) ** 2 + (this.end.y - this.hip.y) ** 2) ** 0.5;
+                    var forwardness2 = dist * Math.cos(theta);
+                    var dF = this.forwardness - forwardness2;
+                    this.forwardness = forwardness2;
+                    if (dF * dF < 1) {
+                        this.step = 0;
+                        this.goalX = this.hip.x + (this.end.x - this.hip.x);
+                        this.goalY = this.hip.y + (this.end.y - this.hip.y);
+                    }
+                }
+            }
+        }
+        
+        // --- CREATURE & AI SYSTEM ---
+        class Creature {
+            constructor(x, y, angle, fAccel, fFric, fRes, fThresh, rAccel, rFric, rRes, rThresh) {
+                this.x = x;
+                this.y = y;
+                this.absAngle = angle;
+                this.fSpeed = 0;
+                this.fAccel = fAccel;
+                this.fFric = fFric;
+                this.fRes = fRes;
+                this.fThresh = fThresh;
+                this.rSpeed = 0;
+                this.rAccel = rAccel;
+                this.rFric = rFric;
+                this.rRes = rRes;
+                this.rThresh = rThresh;
+                this.children = [];
+                this.systems = [];
+                
+                this.isGrabbing = false;
+                this.wasGrabbing = false;
+                this.prevDist = 0;
+                this.displayReward = 0;
+                
+                // Reinforcement Brain
+                this.brain = new NeuralNetwork(2, 6, 2);
+            }
+            
+            follow(x, y) {
+                var mouseDist = Math.max(0.001, ((this.x - x) ** 2 + (this.y - y) ** 2) ** 0.5);
+                if (mouseDist < 40 && !this.isGrabbing) this.isGrabbing = true;
+                if (mouseDist > 300) this.isGrabbing = false;
+                
+                var targetX = x;
+                var targetY = y;
+                
+                if (this.isGrabbing) {
+                    var angleAway = Math.atan2(this.y - y, this.x - x);
+                    targetX = this.x + Math.cos(angleAway) * 150;
+                    targetY = this.y + Math.sin(angleAway) * 150;
+                    targetX = Math.max(50, Math.min(window.innerWidth - 50, targetX));
+                    targetY = Math.max(50, Math.min(window.innerHeight - 50, targetY));
+                    fakeCursor.x = this.x;
+                    fakeCursor.y = this.y;
+                } else {
+                    fakeCursor.x += (x - fakeCursor.x) * 0.15;
+                    fakeCursor.y += (y - fakeCursor.y) * 0.15;
+                }
+
+                var dist = Math.max(0.001, ((this.x - targetX) ** 2 + (this.y - targetY) ** 2) ** 0.5);
+
+                // --- EMOTION & LEARNING SYSTEM ---
+                var idealAngle = Math.atan2(targetY - this.y, targetX - this.x);
+                var dif = this.absAngle - idealAngle;
+                dif -= 2 * Math.PI * Math.floor(dif / (2 * Math.PI) + 1 / 2);
+                
+                let normDif = dif / Math.PI;
+                let normDist = Math.min(1, dist / 500); 
+                let inputs = [normDif, normDist];
+
+                let prediction = this.brain.predict(inputs);
+                
+                var newDist = Math.max(0.001, ((this.x - targetX) ** 2 + (this.y - targetY) ** 2) ** 0.5);
+                var reward = 0;
+                
+                if (this.isGrabbing) {
+                    reward = 1.0; 
+                } else {
+                    reward = -0.2; 
+                    if (newDist < this.prevDist) reward += 0.3; 
+                }
+                
+                this.displayReward = this.displayReward * 0.95 + reward * 0.05;
+                this.prevDist = newDist;
+
+                let isFrustrated = this.displayReward < 0;
+                let noiseLevel = isFrustrated ? Math.abs(this.displayReward) * 0.9 : 0.01;
+                
+                // --- THROAT CLICKING LOGIC ---
+                if (this.isGrabbing && !this.wasGrabbing) {
+                    playClick("grab"); 
+                } else if (isFrustrated && Math.random() < 0.15) {
+                    playClick("frustrated"); 
+                } else if (!isFrustrated && !this.isGrabbing && Math.random() < 0.02) {
+                    playClick("normal"); 
+                }
+                this.wasGrabbing = this.isGrabbing;
+
+                let actionTurn = Math.max(0, Math.min(1, prediction[0] + (Math.random() - 0.5) * noiseLevel));
+                let actionSpeed = Math.max(0, Math.min(1, prediction[1] + (Math.random() - 0.5) * noiseLevel));
+                
+                let nnTurn = (actionTurn * 2 - 1) * Math.PI; 
+                let nnSpeed = actionSpeed;
+                
+                var accel = this.fAccel * nnSpeed;
+                if (this.systems.length > 0) {
+                    var sum = 0;
+                    for (var i = 0; i < this.systems.length; i++) sum += this.systems[i].step == 0;
+                    accel *= sum / this.systems.length;
+                }
+                this.fSpeed += accel;
+                this.fSpeed *= 1 - this.fRes;
+                this.speed = Math.max(0, this.fSpeed - this.fFric);
+                
+                if (Math.abs(nnTurn) > this.rThresh && dist > this.fThresh) {
+                    this.rSpeed -= this.rAccel * (2 * (nnTurn > 0) - 1);
+                }
+                this.rSpeed *= 1 - this.rRes;
+                if (Math.abs(this.rSpeed) > this.rFric) {
+                    this.rSpeed -= this.rFric * (2 * (this.rSpeed > 0) - 1);
+                } else {
+                    this.rSpeed = 0;
+                }
+                
+                this.x = Math.max(20, Math.min(window.innerWidth - 20, this.x));
+                this.y = Math.max(20, Math.min(window.innerHeight - 20, this.y));
+
+                this.absAngle += this.rSpeed;
+                this.absAngle -= 2 * Math.PI * Math.floor(this.absAngle / (2 * Math.PI) + 1 / 2);
+                this.x += this.speed * Math.cos(this.absAngle);
+                this.y += this.speed * Math.sin(this.absAngle);
+                this.absAngle += Math.PI;
+                
+                let idealTurn = Math.max(0, Math.min(1, (dif / Math.PI + 1) / 2));
+                let idealSpeed = dist > this.fThresh ? 1.0 : 0.0;
+                this.brain.train(inputs, [idealTurn, idealSpeed], 0.15);
+                
+                for (var i = 0; i < this.children.length; i++) this.children[i].follow(true, true);
+                for (var i = 0; i < this.systems.length; i++) this.systems[i].update(targetX, targetY);
+                
+                this.absAngle -= Math.PI;
+                this.draw(true);
+            }
+            
+            draw(iter) {
+                var r = 4;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, r, Math.PI / 4 + this.absAngle, 7 * Math.PI / 4 + this.absAngle);
+                ctx.moveTo(this.x + r * Math.cos(7 * Math.PI / 4 + this.absAngle), this.y + r * Math.sin(7 * Math.PI / 4 + this.absAngle));
+                ctx.lineTo(this.x + r * Math.cos(this.absAngle) * 2 ** 0.5, this.y + r * Math.sin(this.absAngle) * 2 ** 0.5);
+                ctx.lineTo(this.x + r * Math.cos(Math.PI / 4 + this.absAngle), this.y + r * Math.sin(Math.PI / 4 + this.absAngle));
+                ctx.stroke();
+                
+                if (iter) for (var i = 0; i < this.children.length; i++) this.children[i].draw(true);
+            }
+        }
+        
+        var critter;
+        
+        function setupLizard(size, legs, tail) {
+            var s = size;
+            critter = new Creature(window.innerWidth / 2, window.innerHeight / 2, 0, s * 5, s * 1, 0.4, 16, 0.3, 0.085, 0.5, 0.3);
+            var spinal = critter;
+            
+            // Neck
+            for (var i = 0; i < 6; i++) {
+                spinal = new Segment(spinal, s * 4, 0, 3.1415 * 2 / 3, 1.2);
+                for (var ii = -1; ii <= 1; ii += 2) {
+                    var node = new Segment(spinal, s * 3, ii, 0.1, 1.5);
+                    for (var iii = 0; iii < 3; iii++) node = new Segment(node, s * 0.1, -ii * 0.1, 0.1, 1.5);
+                }
+            }
+            
+            // Torso and legs
+            for (var i = 0; i < legs; i++) {
+                if (i > 0) {
+                    for (var ii = 0; ii < 6; ii++) {
+                        spinal = new Segment(spinal, s * 4, 0, 1.571, 1.3);
+                        for (var iii = -1; iii <= 1; iii += 2) {
+                            var node = new Segment(spinal, s * 3, iii * 1.571, 0.1, 1.2);
+                            for (var iv = 0; iv < 3; iv++) node = new Segment(node, s * 3, -iii * 0.3, 0.1, 1.5);
+                        }
+                    }
+                }
+                for (var ii = -1; ii <= 1; ii += 2) {
+                    var node = new Segment(spinal, s * 12, ii * 0.785, 0, 2.5);
+                    node = new Segment(node, s * 16, -ii * 0.785, 6.28, 1);
+                    node = new Segment(node, s * 16, ii * 1.571, 3.1415, 1.2);
+                    for (var iii = 0; iii < 4; iii++) new Segment(node, s * 4, (iii / 3 - 0.5) * 1.571, 0.1, 2);
+                    new LegSystem(node, 3, s * 9, critter, 4);
+                }
+            }
+            
+            // Tail
+            for (var i = 0; i < tail; i++) {
+                spinal = new Segment(spinal, s * 4, 0, 3.1415 * 2 / 3, 1.2);
+                for (var ii = -1; ii <= 1; ii += 2) {
+                    var node = new Segment(spinal, s * 3, ii, 0.1, 1.5);
+                    for (var iii = 0; iii < 3; iii++) node = new Segment(node, s * 3 * (tail - i) / tail, -ii * 0.1, 0.1, 1.5);
+                }
+            }
+            
+            setInterval(function() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                critter.follow(Input.mouse.x, Input.mouse.y);
+                
+                // DRAW FAKE CURSOR
+                ctx.save();
+                ctx.translate(fakeCursor.x, fakeCursor.y);
+                ctx.beginPath();
+                ctx.moveTo(0, 0); ctx.lineTo(15, 15); ctx.lineTo(8, 15);
+                ctx.lineTo(12, 22); ctx.lineTo(9, 23); ctx.lineTo(5, 16);
+                ctx.lineTo(0, 21); ctx.closePath();
+                ctx.fillStyle = critter.isGrabbing ? "#ff6666" : "white";
+                ctx.fill();
+                ctx.strokeStyle = "black";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.restore();
+
+                // Draw Brain
+                critter.brain.drawBrain(ctx, 30, 60, critter.displayReward);
+
+            }, 33);
+        }
+        
+        canvas.style.backgroundColor = "black";
+        ctx.strokeStyle = "white";
+        
+        // Procedurally generate a random lizard size/shape
+        var legNum = Math.floor(1 + Math.random() * 12);
+        setupLizard(
+            8 / Math.sqrt(legNum),
+            legNum,
+            Math.floor(4 + Math.random() * legNum * 8)
+        );
+    </script>
+</body>
+</html>
