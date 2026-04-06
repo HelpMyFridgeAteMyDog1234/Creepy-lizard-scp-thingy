@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cool</title>
+    <style>
+        :root {
+            --bg-color: rgba(15, 15, 15, 0.6);
+            --border-color: rgba(255, 255, 255, 0.15);
+            --accent-color: #ffffff;
+            --text-color: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 80px;
+            right: 30px;
+            width: 320px;
+            background: var(--bg-color);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            z-index: 10;
+            color: var(--text-color);
+            transition: opacity 0.3s ease, transform 0.3s ease, pointer-events 0.3s ease;
+        }
+
+        #ui-container.ui-hidden {
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        #menu-toggle {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: var(--bg-color);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 15px;
+            color: var(--accent-color);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            z-index: 20;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        #menu-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: scale(1.05);
+        }
+
+        h2 {
+            margin: 0 0 20px 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            letter-spacing: 0.5px;
+        }
+
+        .slider-group {
+            margin-bottom: 22px;
+        }
+
+        .slider-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #b0b0b0;
+        }
+
+        .val-display {
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        input[type=range] {
+            width: 100%;
+            appearance: none;
+            -webkit-appearance: none;
+            background: transparent;
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            margin-top: -7px;
+            box-shadow: 0 0 10px rgba(255,255,255,0.3);
+            transition: transform 0.1s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        #loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            z-index: 999;
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 25px;
+        }
+
+        .loading-text {
+            font-size: 13px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #aaa;
+            animation: pulse 2s infinite;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-color);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 30px;
+            border: 1px solid var(--border-color);
+            color: #fff;
+            font-size: 12px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        @media (max-width: 600px) {
+            #ui-container {
+                top: auto;
+                bottom: 20px;
+                right: 50%;
+                transform: translateX(50%);
+                width: calc(100% - 40px);
+                max-width: 350px;
+                padding: 20px;
+            }
+            #ui-container.ui-hidden {
+                transform: translate(50%, 20px);
+            }
+            #menu-toggle {
+                top: 20px;
+                right: 20px;
+            }
+            .instructions {
+                top: 20px;
+                bottom: auto;
+            }
+        }
+    </style>
+    
+    <!-- Import maps polyfill -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Rendering 4K Environment...</div>
+    </div>
+
+    <div id="canvas-container"></div>
+    
+    <button id="menu-toggle">☰ Menu</button>
+
+    <div class="instructions">
+        Drag to Rotate Scene &nbsp;|&nbsp; Scroll to Zoom
+    </div>
+
+    <div id="ui-container">
+        <h2>Material Parameters</h2>
+        
+        <div class="slider-group">
+            <label>Transparency <span class="val-display" id="val-transparency">100%</span></label>
+            <input type="range" id="transparency" min="0" max="100" value="100">
+        </div>
+        
+        <div class="slider-group">
+            <label>Roughness (Texture) <span class="val-display" id="val-roughness">0%</span></label>
+            <input type="range" id="roughness" min="0" max="100" value="0">
+        </div>
+
+        <div class="slider-group">
+            <label>Shininess (Clearcoat) <span class="val-display" id="val-shininess">100%</span></label>
+            <input type="range" id="shininess" min="0" max="100" value="100">
+        </div>
+
+        <div class="slider-group">
+            <label>Refractive Index (IOR) <span class="val-display" id="val-ior">1.50</span></label>
+            <input type="range" id="ior" min="100" max="233" value="150">
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+        // 1. Scene Setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        
+        // 2. Camera Setup
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 7);
+
+        // 3. Ultra HD Renderer Setup (Max Resolution)
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: false,
+            powerPreference: "high-performance" 
+        });
+        
+        // Unlocked pixel ratio: uses your display's true native resolution (warning: demanding on mobile)
+        renderer.setPixelRatio(window.devicePixelRatio); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // High Dynamic Range tone mapping for realistic lighting
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        container.appendChild(renderer.domElement);
+
+        // 4. Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 3;
+        controls.maxDistance = 15;
+
+        // 5. Material & Geometry Setup
+        // Doubled polygon count for ultra-smooth glass curvature
+        const geometry = new THREE.SphereGeometry(2, 128, 128); 
+        
+        // Physically Based Transmission Material (Approximates Raytraced Glass)
+        const material = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            metalness: 0.0,
+            roughness: 0.0,
+            transmission: 1.0,     // Glass clarity
+            ior: 1.5,              // Index of Refraction
+            reflectivity: 1.0,
+            thickness: 2.0,        // Simulates volume refraction
+            envMapIntensity: 1.2,  // Enhances reflections
+            clearcoat: 1.0,        // Outer shiny layer
+            clearcoatRoughness: 0.0,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        // Optional: Add a subtle center object to bend light around
+        const innerGeo = new THREE.IcosahedronGeometry(0.5, 0);
+        const innerMat = new THREE.MeshStandardMaterial({ 
+            color: 0xff3366, 
+            roughness: 0.4, 
+            metalness: 0.8,
+            emissive: 0x220011
+        });
+        const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+        scene.add(innerMesh);
+
+        // 6. Environment Map Loading (The "Mall" HDRI Image)
+        // Upgraded from 1K to a true 4K High-Resolution Environment Map
+        const hdrUrl = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/royal_esplanade_4k.hdr';
+        
+        new RGBELoader().load(hdrUrl, function (texture) {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.background = texture;
+            scene.environment = texture;
+
+            // Fade out loading screen
+            setTimeout(() => {
+                const loadingScreen = document.getElementById('loading');
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => { loadingScreen.style.display = 'none'; }, 800);
+            }, 500); 
+            
+        }, undefined, function (error) {
+            console.error('An error occurred loading the HDRI:', error);
+            document.querySelector('.loading-text').innerText = "Failed to load high-res environment.";
+        });
+
+        // 7. Interactivity & UI Binding
+        const updateMaterial = () => {
+            const transparencyVal = document.getElementById('transparency').value / 100;
+            const roughnessVal = document.getElementById('roughness').value / 100;
+            const shininessVal = document.getElementById('shininess').value / 100;
+            const iorVal = document.getElementById('ior').value / 100;
+
+            // Update UI Text
+            document.getElementById('val-transparency').innerText = Math.round(transparencyVal * 100) + '%';
+            document.getElementById('val-roughness').innerText = Math.round(roughnessVal * 100) + '%';
+            document.getElementById('val-shininess').innerText = Math.round(shininessVal * 100) + '%';
+            document.getElementById('val-ior').innerText = iorVal.toFixed(2);
+
+            // Update Shader Parameters instantly
+            material.transmission = transparencyVal;
+            material.roughness = roughnessVal;
+            material.clearcoat = shininessVal;
+            material.ior = iorVal;
+            
+            // Adjust metalness slightly as transmission lowers to make it look like solid polished material
+            material.metalness = transparencyVal < 1.0 ? (1.0 - transparencyVal) * 0.5 : 0.0;
+        };
+
+        ['transparency', 'roughness', 'shininess', 'ior'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateMaterial);
+        });
+
+        // 8. Responsive Design
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 9. Animation Loop (Real-Time Rendering)
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const elapsedTime = clock.getElapsedTime();
+            
+            // Subtle floating animation
+            sphere.position.y = Math.sin(elapsedTime * 0.5) * 0.2;
+            innerMesh.rotation.x = elapsedTime * 0.5;
+            innerMesh.rotation.y = elapsedTime * 0.3;
+            innerMesh.position.y = sphere.position.y;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // 10. Menu Toggle Logic
+        const menuToggleBtn = document.getElementById('menu-toggle');
+        const uiContainer = document.getElementById('ui-container');
+        
+        menuToggleBtn.addEventListener('click', () => {
+            uiContainer.classList.toggle('ui-hidden');
+        });
+
+    </script>
+</body>
+</html>
